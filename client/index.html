@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLD PR</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- DATABASE_URL="postgresql://postgres:12345@localhost:5432/testdb?schema=public" -->
+    <h1>Минимальный js client server, postgreSQL</h1>
+    <div id="allUsers">
+        <!-- <div id="user">[ id ] : 1 [ Name ] : Nikita</div> -->
+        <!-- <div id="user">[ id ] : 2 [ Name ] : Daria</div> -->
+    </div>
+<script>
+    async function fetchAndRenderUsers() {
+    try {
+        const response = await fetch("http://localhost:3000/users");
+        if (!response.ok) {
+        throw new Error("Ошибка : " + response.status);
+        }
+
+        const users = await response.json();
+
+        const container = document.getElementById("allUsers");
+        container.innerHTML = "";
+
+        users.forEach(user => {
+        const div = document.createElement("div");
+        div.className = "user";
+        div.textContent = `[ id ] : ${user.id} [ Name ] : ${user.name}`;
+        container.appendChild(div);
+        });
+
+    } catch (err) {
+        console.error("Ошибка : ", err);
+    }
+    }
+
+    window.addEventListener("DOMContentLoaded", fetchAndRenderUsers);
+</script>
+
+</body>
+</html>
