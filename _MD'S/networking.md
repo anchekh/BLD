@@ -34,7 +34,7 @@ ufw allow 443          # HTTPS
 ufw allow 8080/tcp     # явно указать протокол
 ```
 
-Разрешить только с конкретной подсети - например, доступ к PostgreSQL только из локальной сети:
+Разрешить только с конкретной подсети:
 
 ```bash
 ufw allow from 192.168.1.0/24 to any port 5432
@@ -69,14 +69,9 @@ ufw delete deny 23
 В таблице filter три основных цепочки: INPUT (входящий трафик к хосту), OUTPUT (исходящий от хоста), FORWARD (транзитный трафик через хост - именно здесь работает Docker).
 
 ```bash
-# Просмотр правил таблицы filter
-iptables -L -v -n
-
-# Просмотр таблицы nat
-iptables -t nat -L -v -n
-
-# С номерами строк (удобно для удаления по номеру)
-iptables -L INPUT -v -n --line-numbers
+iptables -L -v -n                           # таблица filter
+iptables -t nat -L -v -n                    # таблица nat
+iptables -L INPUT -v -n --line-numbers      # с номерами строк
 ```
 
 #### Access / Deny
@@ -87,50 +82,26 @@ iptables -L INPUT -v -n --line-numbers
 # Разрешить HTTP и HTTPS
 iptables -A INPUT -p tcp -m multiport --dports 80,443 -j ACCEPT
 
-# Разрешить уже установленные соединения (важно - без этого ответы будут дропаться)
+# Разрешить уже установленные соединения (без этого ответы будут дропаться)
 iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# Разрешить loopback (внутренняя связь процессов)
+# Разрешить loopback
 iptables -A INPUT -i lo -j ACCEPT
 
 # Заблокировать конкретный IP
 iptables -A INPUT -s 1.2.3.4 -j DROP
 ```
 
-Ограничить количество новых подключений по SSH - защита от брутфорса. recent отслеживает историю подключений с каждого IP.
-
-```bash
-iptables -A INPUT -p tcp --dport 22 -m state --state NEW \
-  -m recent --set --name SSH
-iptables -A INPUT -p tcp --dport 22 -m state --state NEW \
-  -m recent --update --seconds 60 --hitcount 4 --name SSH -j DROP
-```
-
 Удалить правило:
 
 ```bash
-iptables -D INPUT -p tcp --dport 80 -j ACCEPT   # по описанию
-iptables -D INPUT 3                              # по номеру строки
-```
-
-Политика по умолчанию - что делать с пакетами, которые не совпали ни с одним правилом:
-
-```bash
-iptables -P INPUT DROP      # все необработанные входящие - дропать
-iptables -P FORWARD DROP
-iptables -P OUTPUT ACCEPT   # исходящий трафик разрешить
-```
-
-Сохранить правила (иначе сбросятся после перезагрузки):
-
-```bash
-apt install iptables-persistent
-netfilter-persistent save
+iptables -D INPUT -p tcp --dport 80 -j ACCEPT       # по описанию
+iptables -D INPUT 3                                 # по номеру строки
 ```
 
 #### iptables + Docker Network
 
-Docker добавляет собственные цепочки в iptables - DOCKER, DOCKER-USER, DOCKER-ISOLATION-STAGE-1 и др. Трафик к контейнерам проходит через цепочку FORWARD, а не INPUT, поэтому правила в INPUT на контейнеры не влияют.
+Docker добавляет собственные цепочки в iptables - DOCKER, DOCKER-USER и тд. Трафик к контейнерам проходит через FORWARD, а не INPUT, поэтому правила в INPUT на контейнеры не влияют.
 
 Посмотреть, что добавил Docker:
 
@@ -140,17 +111,14 @@ iptables -L DOCKER-USER -v -n
 iptables -t nat -L DOCKER -v -n
 ```
 
-DOCKER-USER - единственная цепочка, которую Docker не трогает при перезапуске. Именно сюда нужно добавлять свои правила для контейнеров:
+DOCKER-USER - единственная цепочка, которую Docker не трогает при перезапуске. Сюда нужно добавлять свои правила для контейнеров:
 
 ```bash
-# Запретить доступ к контейнерам с конкретного IP
-iptables -I DOCKER-USER -s 1.2.3.4 -j DROP
-
-# Разрешить доступ только с определённой подсети
-iptables -I DOCKER-USER ! -s 192.168.1.0/24 -j DROP
+iptables -I DOCKER-USER -s 1.2.3.4 -j DROP            # запретить с IP
+iptables -I DOCKER-USER ! -s 192.168.1.0/24 -j DROP   # только своя подсеть
 ```
 
-Проброшенный порт Docker (-p 8080:8080) открывается наружу даже если UFW его закрывает - Docker добавляет правило в nat напрямую, минуя UFW. Чтобы закрыть порт от внешнего мира, есть два способа.
+Проброшенный порт Docker (-p 8080:8080) открывается наружу даже если UFW его закрывает - Docker добавляет правило в nat напрямую, минуя UFW. Закрыть можно двумя способами:
 
 Через iptables:
 
@@ -158,18 +126,11 @@ iptables -I DOCKER-USER ! -s 192.168.1.0/24 -j DROP
 iptables -I DOCKER-USER -p tcp --dport 8080 ! -s 127.0.0.1 -j DROP
 ```
 
-Или биндить порт только на localhost прямо в compose-файле:
+Или биндить порт только на localhost в compose-файле:
 
 ```yml
 ports:
-  - "127.0.0.1:8080:8080"   # недоступно снаружи, доступно только с хоста
-```
-
-Разрешить трафик между контейнерами (если политика FORWARD - DROP):
-
-```bash
-iptables -A FORWARD -s 172.16.0.0/12 -j ACCEPT
-iptables -A FORWARD -d 172.16.0.0/12 -j ACCEPT
+  - "127.0.0.1:8080:8080"
 ```
 
 ## curl
@@ -178,15 +139,13 @@ iptables -A FORWARD -d 172.16.0.0/12 -j ACCEPT
 
 #### GET-запросы
 
-Простейший запрос - без флагов. Флаг -s убирает прогресс-бар (удобно в скриптах), -L следует за редиректами.
+Простейший запрос - без флагов. Флаг -s убирает прогресс-бар, -L следует за редиректами.
 
 ```bash
 curl https://example.com
 curl -sL https://example.com
-
-# Сохранить ответ в файл
-curl -o index.html https://example.com
-curl -O https://example.com/archive.zip   # сохранить с оригинальным именем
+curl -o index.html https://example.com       # сохранить в файл
+curl -O https://example.com/archive.zip      # сохранить с оригинальным именем
 ```
 
 #### POST-запросы
@@ -197,16 +156,16 @@ curl -O https://example.com/archive.zip   # сохранить с оригина
 # Отправить JSON
 curl -X POST https://api.example.com/users \
   -H "Content-Type: application/json" \
-  -d '{"name": "Alice", "email": "alice@example.com"}'
+  -d '{"name": "User", "email": "User@example.com"}'
 
 # Отправить форму
 curl -X POST https://example.com/login \
-  -d "username=alice&password=secret"
+  -d "username=User&password=secret"
 ```
 
 #### Заголовки
 
--H добавляет произвольный заголовок к запросу. Флаг можно указывать несколько раз.
+-H добавляет заголовок к запросу. Флаг можно указывать несколько раз.
 
 ```bash
 curl -H "Authorization: Bearer <token>" https://api.example.com/me
@@ -218,8 +177,8 @@ curl -H "Content-Type: application/json" -H "X-Request-ID: 123" https://api.exam
 -I делает HEAD-запрос и выводит только заголовки. -v показывает весь диалог - запрос и ответ включая заголовки, полезно для отладки TLS и редиректов.
 
 ```bash
-curl -I https://example.com           # только заголовки ответа
-curl -v https://example.com           # полный verbose-лог
+curl -I https://example.com                                 # только заголовки ответа
+curl -v https://example.com                                 # полный verbose-лог
 curl -s -o /dev/null -w "%{http_code}" https://example.com  # только HTTP-код
 ```
 
@@ -227,10 +186,10 @@ curl -s -o /dev/null -w "%{http_code}" https://example.com  # только HTTP-
 
 ```bash
 # Basic Auth
-curl -u user:pass https://example.com/api
+curl -u user:password https://example.com/api
 
 # Сохранить cookies после логина и использовать их в следующем запросе
-curl -c cookies.txt https://example.com/login -d "user=alice&pass=secret"
+curl -c cookies.txt https://example.com/login -d "user=User&password=secret"
 curl -b cookies.txt https://example.com/profile
 ```
 
