@@ -1,6 +1,4 @@
-FROM node:20-alpine
-
-RUN apk add --no-cache openssl
+FROM node:20
 
 WORKDIR /app
 
@@ -14,6 +12,6 @@ RUN npx prisma generate
 
 COPY . .
 
-EXPOSE 3000
+EXPOSE 5000
 
-CMD npx prisma migrate deploy && node index.js
+CMD sh -c "npx prisma migrate deploy && node index.js"

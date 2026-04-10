@@ -12,7 +12,7 @@ dist
 dist-ssr
 *.local
 
-# Edit
+# Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -22,11 +22,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# Env
-.env
-.env.docker
-.postgres.env
-
-# MD
-_MD'S/
